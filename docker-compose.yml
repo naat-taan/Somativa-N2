@@ -1,0 +1,85 @@
+services:
+  orders-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: orders
+      POSTGRES_USER: orders
+      POSTGRES_PASSWORD: somativa-demo
+    volumes:
+      - orders-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orders -d orders"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  inventory-db:
+    image: mongo:7
+    volumes:
+      - inventory-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: somativa
+      RABBITMQ_DEFAULT_PASS: somativa-demo
+    ports:
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  inventory-service:
+    build: ./services/inventory
+    environment:
+      MONGO_URL: mongodb://inventory-db:27017/inventory
+    depends_on:
+      inventory-db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  fulfillment-worker:
+    build: ./services/fulfillment
+    environment:
+      AMQP_URL: amqp://somativa:somativa-demo@rabbitmq:5672/
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  orders-service:
+    build: ./services/orders
+    environment:
+      PORT: "3000"
+      PGHOST: orders-db
+      PGPORT: "5432"
+      PGDATABASE: orders
+      PGUSER: orders
+      PGPASSWORD: somativa-demo
+      INVENTORY_URL: http://inventory-service:8000
+      AMQP_URL: amqp://somativa:somativa-demo@rabbitmq:5672/
+    depends_on:
+      orders-db:
+        condition: service_healthy
+      inventory-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+
+volumes:
+  orders-data:
+  inventory-data:

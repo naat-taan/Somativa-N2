@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: somativa-config
+  namespace: somativa-n2
+data:
+  PGHOST: orders-db-service
+  PGPORT: "5432"
+  PGDATABASE: orders
+  PGUSER: orders
+  INVENTORY_URL: http://inventory-service:8000
+  MONGO_URL: mongodb://inventory-db-service:27017/inventory
